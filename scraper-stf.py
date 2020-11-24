@@ -212,8 +212,8 @@ def refreshProgress(progress_curr, complete=False):
 @click.option('--data-inicial', default='', help='Usar dd-mm-aaaa ou dd/mm/aaaa. Data mais antiga limite de até quando retornar documentos antigos. Default para desde o começo.')
 @click.option('--data-final', default=None, help='Usar dd-mm-aaaa ou dd/mm/aaaa. Data recente limite de até quando retornar documentos recentes. Default para data de execução do bot.')
 @click.option('--res-por-pag', default=50, help='Quantidade de resultados por página de paginação/resultados da busca. Default 50, recomendado 25, 50 ou 100.')
-@click.option('--continuar', default=False, is_flag=True, help='Termo de busca')
-@click.option('--arquivo', default=session_data_path, help='Caso continuando scraping a partir de arquivo de sessão personalizado, informar o caminho do arquivo.')
+@click.option('--continuar', default=False, is_flag=True, help='Opção de continuar scraping que foi parado. Default busca arquivo padrão com os dados da última sessão de scraping.')
+@click.option('--arquivo', default=session_data_path, help='Caso continuando scraping com --continuar, pode-se fornecer aqui o caminho de um arquivo de sessão personalizado.')
 def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag, continuar, arquivo):
     print()
     
