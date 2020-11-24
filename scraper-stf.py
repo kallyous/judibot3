@@ -25,15 +25,13 @@ SITE_HOME = 'https://jurisprudencia.stf.jus.br/'
 # Tolerar no máximo essa quantidade de erros de conexão consecutivos.
 CONNECTION_ERROR_TOLERANCE = 10
 
-# Usar query = BASE_QUERY.replace('{1}', page_number) para paginação.
-# BASE_QUERY = 'pages/search?base={base}&sinonimo=true&plural=true&page={page}&pageSize='+str(BATCH_SIZE)+'&queryString={termo}&sort=_score&sortBy=desc'
+# Usar query = BASE_QUERY.replace('{param_name}', param_value) .
 BASE_QUERY = 'pages/search?base={base}&pesquisa_inteiro_teor=false&sinonimo=true&plural=true&radicais=false&buscaExata=true&publicacao_data={data_ini}-{data_fim}&page={page}&pageSize={res_pg}&queryString={termo}&sort=_score&sortBy=desc'
 
 # Acha no HTML da página o número de documentos retornados pela busca.
 DOC_COUNT_RE = '(\d+\.*\d*) resultado\(s\) para:'
 
-# Acha na URL do documento o ID da ementa, para salvar-mos sem duplicatas.
-# DOC_ID_RE = '.*sjur(\d+).*'
+# Acha na URL do documento o ID do documento, para salvar-mos sem duplicatas.
 DOC_ID_RE = r'search/(\w+-*\w*)/'
 
 # User-Agent aleatório
@@ -69,7 +67,7 @@ def flagConnectionError(sleep_time=15):
     connection_erros += 1
     if connection_erros > CONNECTION_ERROR_TOLERANCE:
         print('Problemas na conexão impediram a conclusão da coleta.')
-        exit(9)
+        exit(1)
     time.sleep(sleep_time)
 
 
@@ -140,7 +138,7 @@ def buildPaginationURL(termo, base, indice, extras=None):
                        .replace('{res_pg}', str(res_pg)) )
     else:
         print('Pesquisa por', base, 'não implementado.')
-        exit(1)
+        exit(2)
 
 
 def retrieveDocUrlList(tree, base):
@@ -376,6 +374,9 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag, co
 if __name__=='__main__':
     # Executa scrapping
     scrap()
+    
+    # Concluído sem erros.
+    exit(0)
 
 
 
