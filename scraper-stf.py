@@ -12,6 +12,12 @@ import re
 import math
 import zlib
 import time
+import json
+import os
+
+
+# Diretório inicial do próprio scraper.
+JUDIBOT_HOME = os.path.dirname(os.path.realpath(__file__))
 
 # URL base da página de busca
 SITE_HOME = 'https://jurisprudencia.stf.jus.br/'
@@ -53,6 +59,9 @@ timeout = 1            # Global para marcar espera entre acesso a páginas.
 data_ini = ''          # Global para data mais antiga de publicação dos docs.
 data_fim = None        # Global para data mais recente de publicação dos docs.
 res_pg = 50            # Global para quantidade de resultados por página.
+
+# Global para local do arquivo onde salvar progresso da sessão de scraping.
+session_data_path = os.path.join(JUDIBOT_HOME, 'scraping_data.json')
 
 
 def flagConnectionError(sleep_time=15):
@@ -185,6 +194,17 @@ def updateDatabase(documents, base):
             print('Documento', doc['_id'], 'já existe, pulando...')
 
 
+def refreshProgress(progress_curr, complete=False):
+    progress = progress_curr
+    if not complete:
+        progress['pagina_atual'] += 1
+    progress['atualizado_em'] = time.asctime( time.localtime(time.time()) )
+    progress['concluido'] = complete
+    with open(session_data_path, 'w') as file:
+        json.dump(progress, file)
+    return progress
+
+
 @click.command()
 @click.option('--termo', default='associação ilícita', help='Termo de busca')
 @click.option('--espera', default=60, help='Tempo em segundos de espera entre cada documento acessado. Default 60s.')
@@ -194,13 +214,42 @@ def updateDatabase(documents, base):
 @click.option('--data-inicial', default='', help='Usar dd-mm-aaaa ou dd/mm/aaaa. Data mais antiga limite de até quando retornar documentos antigos. Default para desde o começo.')
 @click.option('--data-final', default=None, help='Usar dd-mm-aaaa ou dd/mm/aaaa. Data recente limite de até quando retornar documentos recentes. Default para data de execução do bot.')
 @click.option('--res-por-pag', default=50, help='Quantidade de resultados por página de paginação/resultados da busca. Default 50, recomendado 25, 50 ou 100.')
-def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag):
+@click.option('--continuar', default=False, is_flag=True, help='Termo de busca')
+@click.option('--arquivo', default=session_data_path, help='Caso continuando scraping a partir de arquivo de sessão personalizado, informar o caminho do arquivo.')
+def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag, continuar, arquivo):
+    print()
+    
     global db
     global client
     global timeout
     global data_ini
     global data_fim
     global res_pg
+    global session_data_path
+    
+    # Controles do loop principal
+    page_num = 1          # Registra avanço na paginação.
+    last_page = 10        # Página de parada, redefinida na primeira iteração.
+    
+    # Verifica se está retomando trabalho interrompido anteriormente.
+    if continuar:
+        # Se usuário forneceu caminho personalizado, atualizamos aqui.
+        session_data_path = arquivo
+        # Atualizamos todos os parametros a partir do arquivo.
+        with open(session_data_path, 'r') as file:
+            progress = json.load(file)
+            args = progress['argumentos']
+            if progress['concluido']:
+                print(f'O scraping em questão já foi concluído em {progress["atualizado_em"]} .\n')
+                exit(0)
+            page_num = progress['pagina_atual']
+            termo = args['termo']
+            espera = args['espera']
+            max_pg = args['max-pg']
+            base = args['base']
+            data_inicial = args['data-inicial']
+            data_final = args['data-final']
+            res_por_pag = args['res-por-pag']
     
     # Ajusta timeout
     timeout = espera
@@ -224,8 +273,22 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag):
     # Acessa ou cria banco de dados chamado juri-docs no cluster MongoDB.
     db = client['stf-docs']
     
-    page_num = 1          # Registra avanço na paginação.
-    last_page = 10        # Página de parada, redefinida na primeira iteração.
+    # Monta rastreio de progresso inicial, se o scrapping for novo.
+    if not continuar:
+        progress = refreshProgress({
+            'iniciado_em': time.asctime( time.localtime(time.time()) ),
+            'atualizado_em': time.asctime( time.localtime(time.time()) ),
+            'pagina_atual': 0,
+            'concluido': False,
+            'argumentos': {
+                'termo': termo,
+                'espera': espera,
+                'max-pg': max_pg,
+                'base': base,
+                'data-inicial': data_inicial,
+                'data-final': data_final,
+                'res-por-pag': res_por_pag },
+            })
     
     while page_num <= last_page:
         
@@ -243,7 +306,7 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag):
         print()
         
         #3 Atualiza last_page se estiver na primeira iteração.
-        if page_num == 1:
+        if page_num == 1 or continuar:
             
             # Quando max_pg é nãp-positivo, processar até a última página.
             if max_pg < 1:
@@ -261,7 +324,9 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag):
                     continue              # Reinicia iteração atual.
             
             # Quando positivo, essa será a útima página a processar.
-            else: last_page = max_pg
+            else:
+                last_page = max_pg
+                continuar = False
         
         print('PAGINAÇÂO - final em', last_page)
         print()
@@ -277,6 +342,9 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag):
             flagConnectionError() # Registra erro e aguarda alguns segundos.
             continue              # Pula o resto das operações e tenta #2 novamente.
         
+        # Se não houve erro de conexão, atualiza progresso.
+        progress = refreshProgress(progress)
+        
         #5 Acessar URLs e obter documentos, com rotia adequada para cada base.
         print('DOCUMENTOS - OBJETOS')
         documents = scrapDocListByBase(url_docs_list, base)
@@ -290,11 +358,19 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag):
         
         ## Atualiza paginação.
         page_num += 1
-        print('PAGINAÇÂO - PRÓX. PG.', page_num)
-        print()
-        
+        if page_num <= last_page:
+            print('PAGINAÇÂO - PRÓX. PG.', page_num)
+            print()
+    
+    # Atualiza progresso do scraping e salva registro.
+    progress = refreshProgress(progress, complete=True)
+    
     # Encerra conexão.
     client.close()
+    
+    # Scraping concluido
+    print('Scraping concluído em', time.asctime(time.localtime(time.time())))
+    print()
 
 
 if __name__=='__main__':
