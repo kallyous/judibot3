@@ -6,6 +6,7 @@ from fake_useragent import UserAgent
 from w3lib.html import remove_tags
 from urllib.parse import urljoin, quote
 from pymongo import MongoClient
+from decouple import config
 import click
 from pprint import pprint as pp
 import re
@@ -48,7 +49,7 @@ SPLASH_SCRIPT = "    headers = { ['User-Agent'] = '" + USER_AGENT + """',}
 """
 
 # URL de conexão com cluster do MongoDB.
-DB_URL = 'mongodb://judibot-client:U8x3hgZOXHQNQnTs@cluster0-shard-00-00.1re2i.mongodb.net:27017,cluster0-shard-00-01.1re2i.mongodb.net:27017,cluster0-shard-00-02.1re2i.mongodb.net:27017/juri-docs?ssl=true&replicaSet=atlas-egohkf-shard-0&authSource=admin&retryWrites=true&w=majority'
+DB_URL = config('DATABASE_URL')
 
 client = None          # Global de conexão com BD.
 db = None              # Global pra acessar a conexão aberta.
@@ -79,32 +80,32 @@ def clearConnectionErrorFlags():
 def scrapAcordaoPage(url):
     # Captura id do acórdão.
     doc_id = re.search(DOC_ID_RE, url).group(1)
-    
+
     # Prepara dicionário para segurar os dados coletados.
     document = {'_id': doc_id, 'url': url}
-    
+
     # Carrega página do acórdão usando Splash.
     resp = requests.post(
         url='http://localhost:8050/run',
         json={ 'lua_source': SPLASH_SCRIPT, 'url': url })
-    
+
     # Monta ávore de elementos.
     tree = html.fromstring(resp.content)
-    
+
     # Pega conteúdo da div principal
     main_div = tree.xpath("//div[contains(@class, 'cp-content display-in-print ng-star-inserted')]")[0]
-    
+
     # Se essa div não estiver presente, tivemos erro de conexão.
     if len(main_div) < 1:
         return None  # Como não temos loop aqui dentro, trataremos o erro fora.
-    
+
     # Se tudo ocorreu bem, essa div tem os dados principais do acórdão.
     main_div_raw = etree.tostring(main_div)
-    
+
     # Pegamos o HTML da div, compactamos e incluimos no documento.
     compressed = zlib.compress(main_div_raw, level=9)
     document['raw'] = compressed
-    
+
     # Pega texto da ementa
     ementa = tree.xpath("//h4[text() = 'Ementa']/following-sibling::div/text()")[0]
     if ementa:
@@ -112,7 +113,7 @@ def scrapAcordaoPage(url):
         document['ementa'] = ementa
     else:
         document['ementa'] = ''
-    
+
     # Pega texto da decisão
     decisao = tree.xpath("//h4[text() = 'Decisão']/following-sibling::div/text()")[0]
     if decisao:
@@ -120,7 +121,7 @@ def scrapAcordaoPage(url):
         document['decisao'] = decisao
     else:
         document['decisao'] = ''
-    
+
     pp(document)
     return document
 
@@ -163,7 +164,7 @@ def scrapDocListByBase(url_docs_list, base):
             url = url_docs_list[i]
             time.sleep(timeout)          # Aguarda tempo definido entre acessos.
             doc = scrapAcordaoPage(url)  # Acessa página e coleta documento.
-            
+
             # Como estamos em um loop, tratamos o erro aqui dentro, se ocorrer.
             if doc:
                 docs.append(doc)
@@ -216,7 +217,7 @@ def refreshProgress(progress_curr, complete=False):
 @click.option('--arquivo', default=session_data_path, help='Caso continuando scraping com --continuar, pode-se fornecer aqui o caminho de um arquivo de sessão personalizado.')
 def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag, continuar, arquivo):
     print()
-    
+
     global db
     global client
     global timeout
@@ -224,11 +225,11 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag, co
     global data_fim
     global res_pg
     global session_data_path
-    
+
     # Controles do loop principal
     page_num = 1          # Registra avanço na paginação.
     last_page = 10        # Página de parada, redefinida na primeira iteração.
-    
+
     # Verifica se está retomando trabalho interrompido anteriormente.
     if continuar:
         # Se usuário forneceu caminho personalizado, atualizamos aqui.
@@ -248,29 +249,29 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag, co
             data_inicial = args['data-inicial']
             data_final = args['data-final']
             res_por_pag = args['res-por-pag']
-    
+
     # Ajusta timeout
     timeout = espera
-    
+
     # Data inicial é vazia para pegar desde o começo ou recebida pelo usuário.
     data_ini = data_inicial.replace('-', '').replace('/', '')
-    
+
     # Data final é fornecida pelo usuário ou definida para o dia atual.
     if data_final:
         data_fim = data_final.replace('-', '').replace('/', '')
     else:
         lt = time.localtime(time.time())
         data_fim = f'{lt[2]}{lt[1]}{lt[0]}'
-    
+
     # Define quantidade de resultados por página
     res_pg = res_por_pag
-    
+
     # Abre conexão com banco de dados.
     client = MongoClient(DB_URL)
-    
+
     # Acessa ou cria banco de dados chamado juri-docs no cluster MongoDB.
     db = client['stf-docs']
-    
+
     # Monta rastreio de progresso inicial, se o scrapping for novo.
     if not continuar:
         progress = refreshProgress({
@@ -287,14 +288,14 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag, co
                 'data-final': data_final,
                 'res-por-pag': res_por_pag },
             })
-    
+
     while page_num <= last_page:
-        
+
         #1 Monta URL da página de busca, contendo a query de busca e paginação.
         url_next_page = buildPaginationURL(termo, base, page_num)
         print('PAGINAÇÂO - URL\n', url_next_page)
         print()
-        
+
         #2 Envia para o Splash processar e rederizar JS, e pega a resposta.
         resp = requests.post(url='http://localhost:8050/run', json={
                                      'lua_source': SPLASH_SCRIPT,
@@ -302,10 +303,10 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag, co
         tree = html.fromstring(html=resp.content)
         print('SPLASH - RESPOSTA\n\n', ' '.join(remove_tags(resp.text).split()))
         print()
-        
+
         #3 Atualiza last_page se estiver na primeira iteração.
         if page_num == 1 or continuar:
-            
+
             # Quando max_pg é nãp-positivo, processar até a última página.
             if max_pg < 1:
                 match = re.search(DOC_COUNT_RE, remove_tags(resp.text))
@@ -315,57 +316,57 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag, co
                     last_page = math.ceil(doc_count/res_pg)
                     # Reseta contagem de erros.
                     clearConnectionErrorFlags()
-                    
+
                 # Erros de conexão em #1 retornam páginas sem o número de documentos.
                 else:
                     flagConnectionError() # Registra erro e aguarda um pouco.
                     continue              # Reinicia iteração atual.
-            
+
             # Quando positivo, essa será a útima página a processar.
             else:
                 last_page = max_pg
                 continuar = False
-        
+
         print('PAGINAÇÂO - final em', last_page)
         print()
-        
+
         #4 De acordo com a base sendo vasculhada, encontrar e listar URLs dos docs.
         url_docs_list = retrieveDocUrlList(tree, base)
         print('DOCUMENTOS - LISTA DE URL')
         pp(url_docs_list)
         print()
-        
+
         # Erros de conexão na etapa #2 fazem a etapa #4 retornar uma lista vazia.
         if len(url_docs_list) < 1:
             flagConnectionError() # Registra erro e aguarda alguns segundos.
             continue              # Pula o resto das operações e tenta #2 novamente.
-        
+
         # Se não houve erro de conexão, atualiza progresso.
         progress = refreshProgress(progress)
-        
+
         #5 Acessar URLs e obter documentos, com rotia adequada para cada base.
         print('DOCUMENTOS - OBJETOS')
         documents = scrapDocListByBase(url_docs_list, base)
         print()
-        
+
         #6 No banco de dados, salvar documentos na coleção da base em questão.
         updateDatabase(documents, base)
-        
+
         # Reseta contagem de erros.
         clearConnectionErrorFlags()
-        
+
         ## Atualiza paginação.
         page_num += 1
         if page_num <= last_page:
             print('PAGINAÇÂO - PRÓX. PG.', page_num)
             print()
-    
+
     # Atualiza progresso do scraping e salva registro.
     progress = refreshProgress(progress, complete=True)
-    
+
     # Encerra conexão.
     client.close()
-    
+
     # Scraping concluido
     print('Scraping concluído em', time.asctime(time.localtime(time.time())))
     print()
@@ -374,31 +375,6 @@ def scrap(termo, base, espera, max_pg, data_inicial, data_final, res_por_pag, co
 if __name__=='__main__':
     # Executa scrapping
     scrap()
-    
+
     # Concluído sem erros.
     exit(0)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

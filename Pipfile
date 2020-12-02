@@ -12,6 +12,7 @@ fake-useragent = "*"
 w3lib = "*"
 pymongo = "*"
 click = "*"
+python-decouple = "*"
 
 [requires]
 python_version = "3.6"
