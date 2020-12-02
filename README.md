@@ -12,17 +12,16 @@
 * [Pip](https://pypi.org/project/pip/)
 * [Pipenv](https://pipenv.readthedocs.io/en/latest/)
 * [Docker](https://www.docker.com/get-started)
-* [Splash](https://splash.readthedocs.io/en/stable/)
 
-Com os requisitos instalados, será necessário iniciar um container com o Splash.
-O Splash é responsável pela execução do Javascript dás páginas.
+Com os requisitos instalados, será necessário iniciar um container com o [Splash](https://splash.readthedocs.io/en/stable/).
+O Splash é responsável pela execução do Javascript das páginas.
 Inicie um container com a imagem do Splash com o comando:
 
 ```
 $ sudo docker run --publish 8050:8050 --detach scrapinghub/splash
 ```
 
-Isso baixará a imagem [scrapinghub/splash:latest](https://hub.docker.com/r/scrapinghub/splash) do [Docker Hub](https://hub.docker.com/) na primeira vez que for executado. Posteriormente a imagem já salva será reutilizada. Agora um container com Splash deverá estar ouvindo em `localhost:8050` .
+Isso baixará a imagem [scrapinghub/splash:latest](https://hub.docker.com/r/scrapinghub/splash) do [Docker Hub](https://hub.docker.com/) na primeira vez que for executado. Posteriormente a imagem já salva será reutilizada. Agora um container com Splash deverá estar ouvindo em `localhost:8050` . Pra testar é só acessar `localhost:8050` pelo navegador e ver se o Splash está rodando.
 
 Ative o ambiente do pipenv com:
 
